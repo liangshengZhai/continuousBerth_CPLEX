@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Mac ARM - CPLEX 22.11",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/Applications/CPLEX_Studio2211/cplex/include",
+                "/Applications/CPLEX_Studio2211/concert/include"
+            ],
+            "defines": [],
+            "macFrameworkPath": [
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks"
+            ],
+            "compilerPath": "/usr/bin/clang++",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            // "intelliSenseMode": "macos-clang-arm64",
+            "intelliSenseMode": "linux-clang-x64"
+            // "configurationProvider": "ms-vscode.makefile-tools"
+        }
+    ],
+    "version": 4
+}

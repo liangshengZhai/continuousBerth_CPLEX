@@ -1,0 +1,1 @@
+clang++ -std=c++17 -stdlib=libc++ -I. data_init.cpp -o data_init_runner

@@ -57,6 +57,7 @@ ModelParams setParams(int numCrane,int numShips) {
     params.numShipK=3;
     params.Long = 1000.0; //岸线长度.
     params.y0 = 0; //岸线起点
+    params.safe_distance = 20;
     
     params.width = 50.0;
     params.relativeHeight = 0.5;
@@ -183,6 +184,7 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
         std::ofstream ofs(baseName + "_general.csv");
         ofs << "key,value\n";
         ofs << "Length," << params.Long << "\n";
+        ofs << "safe_distance," << params.safe_distance << "\n";
         ofs << "numCrane,"<<params.numCrane<<"\n";
         ofs << "numRows," << params.numRows << "\n";
         ofs << "numSlotsPerRow," << params.numSlotsPerRow << "\n";
@@ -292,8 +294,8 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
 
 // 当作独立可执行使用的入口（合并原 data_init_runner 功能）
 int main(int argc, char** argv) {
-    int numCrane = 33;
-    int numShips = 22;
+    int numCrane = 3;
+    int numShips = 3;
     // if (argc >= 3) {
     //     try {
     //         numCrane = std::stoi(argv[1]);

@@ -17,6 +17,7 @@ struct ModelParams {
     int y0;              //岸线起点
     //船的船舱个数
     int numShipK;
+    int safe_distance=10; //船舶间最小安全距离
     
     vector<int> shipLength; //船舶长度
     

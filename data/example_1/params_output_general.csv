@@ -1,9 +1,9 @@
 key,value
 Length,1000
-numCrane,2
+numCrane,33
 numRows,20
 numSlotsPerRow,24
-numShips,3
+numShips,22
 planningHorizon,168
 numShipK,3
 width,50

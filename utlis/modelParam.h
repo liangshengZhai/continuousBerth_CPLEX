@@ -8,7 +8,7 @@
 using namespace std;
 // 模型参数结构体
 struct ModelParams {
-    int crane;           // 起重机数量
+    int numCrane;           // 起重机数量
     int numRows;           // 存储行数量
     int numSlotsPerRow;    // 每行槽数量
     int numShips;          // 船舶数量

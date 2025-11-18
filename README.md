@@ -1,0 +1,2 @@
+utlis目录下
+data_init.cpp 对模型参数进行初始化输出到CSV文件

@@ -49,7 +49,7 @@ static std::string dirname_of(const std::string& path) {
 // 读取模型参数
 ModelParams setParams(int numCrane,int numShips) {
     ModelParams params;
-    params.crane = numCrane;
+    params.numCrane = numCrane;
     params.numRows = 20;
     params.numSlotsPerRow = 24;
     params.numShips = numShips;
@@ -183,7 +183,7 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
         std::ofstream ofs(baseName + "_general.csv");
         ofs << "key,value\n";
         ofs << "Length," << params.Long << "\n";
-        ofs << "numCrane,"<<params.crane<<"\n";
+        ofs << "numCrane,"<<params.numCrane<<"\n";
         ofs << "numRows," << params.numRows << "\n";
         ofs << "numSlotsPerRow," << params.numSlotsPerRow << "\n";
         ofs << "numShips," << params.numShips << "\n";
@@ -292,8 +292,8 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
 
 // 当作独立可执行使用的入口（合并原 data_init_runner 功能）
 int main(int argc, char** argv) {
-    int numCrane = 2;
-    int numShips = 3;
+    int numCrane = 33;
+    int numShips = 22;
     // if (argc >= 3) {
     //     try {
     //         numCrane = std::stoi(argv[1]);

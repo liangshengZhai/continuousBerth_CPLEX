@@ -48,6 +48,9 @@
         "unordered_map": "cpp",
         "variant": "cpp",
         "__tree": "cpp",
-        "map": "cpp"
+        "map": "cpp",
+        "complex": "cpp",
+        "memory": "cpp",
+        "algorithm": "cpp"
     }
 }

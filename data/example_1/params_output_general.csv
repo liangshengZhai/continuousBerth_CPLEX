@@ -1,0 +1,12 @@
+key,value
+Length,1000
+numCrane,2
+numRows,20
+numSlotsPerRow,24
+numShips,3
+planningHorizon,168
+numShipK,3
+width,50
+relativeHeight,0.5
+alpha,1
+beta,20000

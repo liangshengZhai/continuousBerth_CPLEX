@@ -46,16 +46,17 @@ static std::string dirname_of(const std::string& path) {
 }
 
 
-// 读取模型参数（从 verify.cpp 提取）
-ModelParams setParams(int numBerths,int numShips) {
+// 读取模型参数
+ModelParams setParams(int numCrane,int numShips) {
     ModelParams params;
-
-    params.numBerths = numBerths;
+    params.crane = numCrane;
     params.numRows = 20;
     params.numSlotsPerRow = 24;
     params.numShips = numShips;
     params.planningHorizon = 168; // 一周（小时）
     params.numShipK=3;
+    params.Long = 1000.0; //岸线长度.
+    params.y0 = 0; //岸线起点
     
     params.width = 50.0;
     params.relativeHeight = 0.5;
@@ -84,27 +85,12 @@ ModelParams setParams(int numBerths,int numShips) {
     // 生成随机卸载速度
     params.unloadingSpeed.resize(params.numShips);
     for (int s = 0; s < params.numShips; ++s) {
-        params.unloadingSpeed[s].resize(params.numBerths);
-        for (int b = 0; b < params.numBerths; ++b) {
-        params.unloadingSpeed[s][b].resize(params.numShipK);
-            for(int k =0;k < params.numShipK;k++){
-                params.unloadingSpeed[s][b][k] = unloadSpeed(gen);  // 为每个船舶-泊位组合生成随机速度
-            }
+        params.unloadingSpeed[s].resize(params.numShipK);
+        for(int k =0;k < params.numShipK;k++){
+            params.unloadingSpeed[s][k] = unloadSpeed(gen);  // 为每个船舶-泊位组合生成随机速度
         }
     }
-    //随机生成 转运成本
-    params.transshipmentCost.resize(params.numBerths);
-    for(int b = 0; b < params.numBerths ;b++){
-        params.transshipmentCost[b].resize(params.numRows);
-        for(int r = 0; r < params.numRows;r++){
-            params.transshipmentCost[b][r].resize(params.numSlotsPerRow);
-            for(int v = 0 ; v < params.numSlotsPerRow;v++){
-                //由于程序中 v 是从0开始的 不需要-1
-                params.transshipmentCost[b][r][v] = R(gen) + 0.5*v;
-            }
-        }
-    }
-    //同一行对同一艘船存储成本一致
+    //同一行对同一艘船的同一货舱存储成本一致
     params.storageCost.resize(params.numShips);
     for(int s = 0; s < params.numShips ; s++){
         params.storageCost[s].resize(params.numShipK);
@@ -120,6 +106,12 @@ ModelParams setParams(int numBerths,int numShips) {
     params.cargoWeight.resize(params.numShips);
     for(int s = 0 ; s < params.numShips;s++){
         params.cargoWeight[s] = weight(gen);
+    }
+
+    //通过货物重量的对数计算出船舶的长度
+    params.shipLength.resize(params.numShips);
+    for (int s = 0; s < params.numShips; ++s) {
+        params.shipLength[s] = 116.5 * std::log(params.cargoWeight[s]/10000) + 102.3;
     }
    
     //初始化货物密度
@@ -190,7 +182,8 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
     {
         std::ofstream ofs(baseName + "_general.csv");
         ofs << "key,value\n";
-        ofs << "numBerths," << params.numBerths << "\n";
+        ofs << "Length," << params.Long << "\n";
+        ofs << "numCrane,"<<params.crane<<"\n";
         ofs << "numRows," << params.numRows << "\n";
         ofs << "numSlotsPerRow," << params.numSlotsPerRow << "\n";
         ofs << "numShips," << params.numShips << "\n";
@@ -200,6 +193,16 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
         ofs << "relativeHeight," << params.relativeHeight << "\n";
         ofs << "alpha," << params.alpha << "\n";
         ofs << "beta," << params.beta << "\n";
+        ofs.close();
+    }
+
+    // shipLength
+    {
+        std::ofstream ofs(baseName + "_shipLength.csv");
+        ofs << "ship,length\n";
+        for (int s = 0; s < params.numShips; ++s) {
+            ofs << s << "," << params.shipLength[s] << "\n";
+        }
         ofs.close();
     }
 
@@ -259,30 +262,15 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
         ofs.close();
     }
 
-    // 7) unloadingSpeed (s,b,k,value)
+    // 7) unloadingSpeed (s,k,value)
     {
         std::ofstream ofs(baseName + "_unloadingSpeed.csv");
-        ofs << "ship,berth,k,value\n";
+        ofs << "ship,k,value\n";
         for (int s = 0; s < (int)params.unloadingSpeed.size(); ++s) {
-            for (int b = 0; b < (int)params.unloadingSpeed[s].size(); ++b) {
-                for (int k = 0; k < (int)params.unloadingSpeed[s][b].size(); ++k) {
-                    ofs << s << "," << b << "," << k << "," << params.unloadingSpeed[s][b][k] << "\n";
-                }
+            for (int k = 0; k < (int)params.unloadingSpeed[s].size(); ++k) {
+                ofs << s << ","  << k << "," << params.unloadingSpeed[s][k] << "\n";
             }
-        }
-        ofs.close();
-    }
-
-    // 8) transshipmentCost (b,r,v,value)
-    {
-        std::ofstream ofs(baseName + "_transshipmentCost.csv");
-        ofs << "berth,row,slot,value\n";
-        for (int b = 0; b < (int)params.transshipmentCost.size(); ++b) {
-            for (int r = 0; r < (int)params.transshipmentCost[b].size(); ++r) {
-                for (int v = 0; v < (int)params.transshipmentCost[b][r].size(); ++v) {
-                    ofs << b << "," << r << "," << v << "," << params.transshipmentCost[b][r][v] << "\n";
-                }
-            }
+            
         }
         ofs.close();
     }
@@ -302,136 +290,24 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
     }
 }
 
-// 合并导出：每行一个 ship，列展开为各个可对应的参数，方便单表分析
-void writeParamsCombinedCSV(const ModelParams& params, const std::string& baseName) {
-    // 确保输出目录存在
-    {
-        std::string dir = dirname_of(baseName);
-        if (!dir.empty()) {
-            mkdir_p(dir + "/");
-        }
-    }
-    std::string file = baseName + "_combined.csv";
-    std::ofstream ofs(file);
-    if (!ofs.is_open()) {
-        std::cerr << "无法打开文件写入: " << file << std::endl;
-        return;
-    }
-
-    // 构建表头
-    std::vector<std::string> headers;
-    headers.push_back("ship");
-    headers.push_back("arrivalTime");
-    headers.push_back("cargoWeight");
-
-    // requiredSlots per k
-    for (int k = 0; k < params.numShipK; ++k) {
-        headers.push_back("requiredSlots_k" + std::to_string(k));
-    }
-
-    // cargoDensity per k
-    for (int k = 0; k < params.numShipK; ++k) {
-        headers.push_back("cargoDensity_k" + std::to_string(k));
-    }
-
-    // maxResponseAngle per k
-    for (int k = 0; k < params.numShipK; ++k) {
-        headers.push_back("maxResponseAngle_k" + std::to_string(k));
-    }
-
-    // unloadingSpeed: for each berth and k
-    for (int b = 0; b < params.numBerths; ++b) {
-        for (int k = 0; k < params.numShipK; ++k) {
-            headers.push_back("unloadingSpeed_b" + std::to_string(b) + "_k" + std::to_string(k));
-        }
-    }
-
-    // storageCost: for each row and k
-    for (int r = 0; r < params.numRows; ++r) {
-        for (int k = 0; k < params.numShipK; ++k) {
-            headers.push_back("storageCost_r" + std::to_string(r) + "_k" + std::to_string(k));
-        }
-    }
-
-    // 写表头
-    for (size_t i = 0; i < headers.size(); ++i) {
-        if (i) ofs << ',';
-        ofs << headers[i];
-    }
-    ofs << '\n';
-
-    // 写每一行（每艘船）
-    for (int s = 0; s < params.numShips; ++s) {
-        bool first = true;
-        auto put = [&](const std::string &v){ if (!first) ofs<<','; ofs<<v; first=false; };
-
-        put(std::to_string(s));
-        put(std::to_string(params.arrivalTime[s]));
-        put(std::to_string(params.cargoWeight[s]));
-
-        // requiredSlots
-        for (int k = 0; k < params.numShipK; ++k) {
-            int val = 0;
-            if (s < (int)params.requiredSlots.size() && k < (int)params.requiredSlots[s].size()) val = params.requiredSlots[s][k];
-            put(std::to_string(val));
-        }
-
-        // cargoDensity
-        for (int k = 0; k < params.numShipK; ++k) {
-            double v = 0.0;
-            if (s < (int)params.cargoDensity.size() && k < (int)params.cargoDensity[s].size()) v = params.cargoDensity[s][k];
-            put(std::to_string(v));
-        }
-
-        // maxResponseAngle
-        for (int k = 0; k < params.numShipK; ++k) {
-            double v = 0.0;
-            if (s < (int)params.maxResponseAngle.size() && k < (int)params.maxResponseAngle[s].size()) v = params.maxResponseAngle[s][k];
-            put(std::to_string(v));
-        }
-
-        // unloadingSpeed per berth
-        for (int b = 0; b < params.numBerths; ++b) {
-            for (int k = 0; k < params.numShipK; ++k) {
-                double v = 0.0;
-                if (s < (int)params.unloadingSpeed.size() && b < (int)params.unloadingSpeed[s].size() && k < (int)params.unloadingSpeed[s][b].size()) v = params.unloadingSpeed[s][b][k];
-                put(std::to_string(v));
-            }
-        }
-
-        // storageCost per row
-        for (int r = 0; r < params.numRows; ++r) {
-            for (int k = 0; k < params.numShipK; ++k) {
-                double v = 0.0;
-                if (s < (int)params.storageCost.size() && k < (int)params.storageCost[s].size() && r < (int)params.storageCost[s][k].size()) v = params.storageCost[s][k][r];
-                put(std::to_string(v));
-            }
-        }
-
-        ofs << '\n';
-    }
-
-    ofs.close();
-}
-
 // 当作独立可执行使用的入口（合并原 data_init_runner 功能）
 int main(int argc, char** argv) {
-    int numBerths = 9;
-    int numShips = 50;
-    if (argc >= 3) {
-        try {
-            numBerths = std::stoi(argv[1]);
-            numShips = std::stoi(argv[2]);
-        } catch (...) {
-            std::cerr << "参数解析失败，使用默认值 numBerths=2 numShips=3" << std::endl;
-        }
-    }
+    int numCrane = 2;
+    int numShips = 3;
+    // if (argc >= 3) {
+    //     try {
+    //         numCrane = std::stoi(argv[1]);
+    //         numShips = std::stoi(argv[2]);
+    //     } catch (...) {
+    //         std::cerr << "参数解析失败，使用默认值 numCrane=9 numShips=50" << std::endl;
+    //     }
+    // }
 
-    std::cout << "Running data_init (merged) with numBerths=" << numBerths << " numShips=" << numShips << std::endl;
-    ModelParams params = setParams(numBerths, numShips);
+    std::cout << "Running data_init (merged) with numCrane=" << numCrane << " numShips=" << numShips << std::endl;
+    ModelParams params = setParams(numCrane, numShips);
 
     // Ensure output directory exists: caller created cpp/data earlier; just write into it.
-    writeParamsToCSV(params, "data/example_L12/params_output");
+    writeParamsToCSV(params, "../data/example_1/params_output");
     // writeParamsCombinedCSV(params, "data/example_2/params_output_combined");
 
     std::cout << "Data export completed to cpp/data/*.csv" << std::endl;

@@ -336,6 +336,64 @@ int main() {
 			a_s[s] = IloNumVar(env, 0, IloInfinity);
 		}
 
+		// 4. 构建目标函数：最小化总转运成本、存储成本和靠泊时间
+        IloExpr objExpr(env);
+        // 总转运成本
+        for (int s = 0; s < params.numShips; s++) {
+			for(int k =0 ;k < params.numShipK;k++){
+				for (int r = 0; r < params.numRows; r++) {
+					for (int v = 0; v < params.numSlotsPerRow; v++) {
+						// 槽位中心坐标 (x_rv, y_rv)
+						double x_rv = v * params.width + params.width / 2.0;
+						double y_rv = r * params.width + params.width / 2.0;
+						// 船中心坐标 (a_s + l_s/2, y0)
+						IloExpr ship_center = (a_s[s] + params.shipLength[s]) / 2.0;
+						double y0 = 0.0; // 你可以根据实际情况设定
+						IloExpr dist2 = (ship_center - x_rv) * (ship_center - x_rv) + (y0 - y_rv) * (y0 - y_rv);
+						IloExpr dist = IloPower(dist2, 0.5);
+						objExpr += dist * params.cargoWeight[s] / (params.requiredSlots[s][k]*params.numShipK) * x[s][k][r][v];
+					}
+				}
+			}
+        }
+        
+        // 总存储成本
+        for (int s = 0; s < params.numShips; s++) {
+            for(int k =0 ; k <params.numShipK;k++){
+                for (int r = 0; r < params.numRows; r++) {
+                    for (int v = 0; v < params.numSlotsPerRow; v++) {
+                        objExpr += params.storageCost[s][k][r] * x[s][k][r][v];
+                    }
+                }
+            }
+        }
+
+
+       IloExpr berthTime(env);
+        // 正确计算每艘船的靠泊时间（考虑泊位分配）
+        for (int s = 0; s < params.numShips; s++) {
+            IloExpr singleBerth(env);
+            singleBerth += e[s] - params.arrivalTime[s];
+    
+            for(int k =0 ; k< params.numShipK;k++){
+                // 仅累加分配泊位的卸载时间
+				double speed = params.unloadingSpeed[s][k];
+				if (speed <= 0) speed = 1.0; // 防除零
+				singleBerth += (params.cargoWeight[s] / (speed * params.numShipK));
+                
+            }
+            berthTime += singleBerth;
+            singleBerth.end();
+        }
+        // 应用权重
+        objExpr = params.alpha * objExpr + params.beta * berthTime; // 注意：目标函数公式需根据文档调整权重应用方式
+        
+        model.add(IloMinimize(env, objExpr));
+        berthTime.end();
+        objExpr.end();
+
+
+
 
 	}catch (IloException& e) {
 		std::cerr << "CPLEX异常: " << e.getMessage() << std::endl;

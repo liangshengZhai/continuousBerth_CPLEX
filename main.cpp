@@ -818,6 +818,103 @@ int main() {
 		   std::cout << "未找到可行解，状态: " << cplex.getStatus() << std::endl;
 		}
 
+		// 写入结果到 output 目录（CSV 格式，可由 Excel 打开）
+		try {
+			// 确保输出目录存在
+			if (!mkdir_p(OUTPUT_DIR)) {
+				throw std::runtime_error("无法创建输出目录: " + OUTPUT_DIR);
+			}
+
+			// 泊位分配
+			// 输出每艘船的停靠起始位置（a_s）和终止位置（a_s + shipLength）
+			{
+				std::ofstream ofs(OUTPUT_DIR + "/berth_assignment.csv");
+				ofs << "ship,berth_start,berth_end\n";
+				for (int s = 0; s < params.numShips; s++) {
+					try {
+						double berth_start = cplex.getValue(a_s[s]);
+						double berth_end = berth_start + params.shipLength[s];
+						ofs << s << "," << berth_start << "," << berth_end << "\n";
+					} catch (IloException& ex) {
+						ofs << s << ",[未提取],[未提取]" << ex.getMessage() << "\n";
+					}
+				}
+			}
+
+			// 每个槽的分配 (s,k,row,slot)
+			{
+				std::ofstream ofs(OUTPUT_DIR + "/slot_allocations.csv");
+				ofs << "ship,k,row,slot\n";
+				for (int s = 0; s < params.numShips; ++s) {
+					for (int k = 0; k < params.numShipK; ++k) {
+						for (int r = 0; r < params.numRows; ++r) {
+							for (int v = 0; v < params.numSlotsPerRow; ++v) {
+								if (cplex.getValue(x[s][k][r][v]) > 0.5) ofs << s << "," << k << "," << r << "," << v << "\n";
+							}
+						}
+					}
+				}
+			}
+
+			// 每个货舱占用区间
+			{
+				std::ofstream ofs(OUTPUT_DIR + "/intervals.csv");
+				ofs << "ship,k,row,intervals\n";
+				for (int s = 0; s < params.numShips; ++s) {
+					for (int k = 0; k < params.numShipK; ++k) {
+						int assignedRow = -1;
+						for (int r = 0; r < params.numRows; ++r) {
+							if (cplex.getValue(f[s][k][r]) > 0.5) { assignedRow = r; break; }
+						}
+						if (assignedRow == -1) continue;
+
+						std::vector<int> occ;
+						for (int v = 0; v < params.numSlotsPerRow; ++v) {
+							if (cplex.getValue(x[s][k][assignedRow][v]) > 0.5) occ.push_back(v);
+						}
+						if (occ.empty()) continue;
+
+						// 合并连续区间为字符串
+						std::ostringstream oss;
+						int start = occ[0], prev = occ[0];
+						for (size_t idx = 1; idx < occ.size(); ++idx) {
+							int cur = occ[idx];
+							if (cur == prev + 1) { prev = cur; }
+							else {
+								if (start == prev) oss << start;
+								else oss << start << "-" << prev;
+								oss << ";";
+								start = cur; prev = cur;
+							}
+						}
+						if (start == prev) oss << start; else oss << start << "-" << prev;
+
+						ofs << s << "," << k << "," << assignedRow << "," << '"' << oss.str() << '"' << "\n";
+					}
+				}
+			}
+
+			// e_s
+			{
+				std::ofstream ofs(OUTPUT_DIR + "/e_s.csv");
+				ofs << "ship,e_s\n";
+				for (int s = 0; s < params.numShips; ++s) ofs << s << "," << cplex.getValue(e[s]) << "\n";
+			}
+
+			// e_sk
+			{
+				std::ofstream ofs(OUTPUT_DIR + "/e_sk.csv");
+				ofs << "ship,k,e_sk\n";
+				for (int s = 0; s < params.numShips; ++s) {
+					for (int k = 0; k < params.numShipK; ++k) {
+						ofs << s << "," << k << "," << cplex.getValue(e_sk[s][k]) << "\n";
+					}
+				}
+			}
+
+            } catch (std::exception &ex) {
+                env.out() << "写输出文件时出错: " << ex.what() << std::endl;
+            }
 
 	}catch (IloException& e) {
 		std::cerr << "CPLEX异常: " << e.getMessage() << std::endl;

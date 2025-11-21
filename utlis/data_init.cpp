@@ -54,7 +54,7 @@ ModelParams setParams(int numShips) {
     params.numShips = numShips;
     params.planningHorizon = 168; // 一周（小时）
     params.numShipK=3;
-    params.Length = 500.0; //岸线长度.
+    params.Length = 1000.0; //岸线长度.
     params.y0 = 0; //岸线起点
     params.safe_distance = 20;
     

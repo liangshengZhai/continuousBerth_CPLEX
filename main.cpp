@@ -14,8 +14,8 @@
 
 #include "utlis/modelParam.h"
 // 集中管理数据输入和输出路径，只需改这里即可
-static const std::string INPUT_BASE = "data/example_1/params_output"; // 不带扩展名的前缀
-static const std::string OUTPUT_DIR = "output/output_1";               // 输出目录
+static const std::string INPUT_BASE = "data/example_2/params_output"; // 不带扩展名的前缀
+static const std::string OUTPUT_DIR = "output/output_2";               // 输出目录
 
 // 递归创建目录（等价于 mkdir -p）
 static bool mkdir_p(const std::string& dirPath) {
@@ -64,9 +64,8 @@ auto loadParamsFromCSV = [](const std::string &baseName) -> ModelParams {
 		if (!std::getline(ss, key, ',')) continue;
 		if (!std::getline(ss, val)) continue;
 		try {
-			if (key == "numCrane") params.numCrane = std::stoi(val);
-			// if (key == "crane") params.numcCrane = std::stoi(val);
-			else if (key == "numRows") params.numRows = std::stoi(val);
+			if (key == "numRows") params.numRows = std::stoi(val);
+			else if (key == "Length") params.Length = std::stod(val);
 			else if (key == "safe_distance") params.safe_distance = std::stoi(val);
 			else if (key == "numSlotsPerRow") params.numSlotsPerRow = std::stoi(val);
 			else if (key == "numShips") params.numShips = std::stoi(val);
@@ -76,6 +75,7 @@ auto loadParamsFromCSV = [](const std::string &baseName) -> ModelParams {
 			else if (key == "relativeHeight") params.relativeHeight = std::stod(val);
 			else if (key == "alpha") params.alpha = std::stod(val);
 			else if (key == "beta") params.beta = std::stod(val);
+			else if (key == "gamma") params.gamma = std::stod(val);
 		} catch (...) {
 			// ignore parse errors per-value
 		}
@@ -230,7 +230,7 @@ auto loadParamsFromCSV = [](const std::string &baseName) -> ModelParams {
 
 
 int main() {
-
+	double bigM = 1e6; // 全局可用的大常数
 	//初始化CPLEX环境和模型
 	IloEnv env;
 	IloModel model(env);
@@ -238,7 +238,7 @@ int main() {
 		//读取模型参数
 		ModelParams params = loadParamsFromCSV(INPUT_BASE);
 		// Diagnostic print: verify that params were loaded correctly
-		std::cout << "[DEBUG] Loaded params: numCrane=" << params.numCrane
+		std::cout << "[DEBUG] Loaded params: "
 				<< " numRows=" << params.numRows
 				<< " numSlotsPerRow=" << params.numSlotsPerRow
 				<< " numShips=" << params.numShips
@@ -251,7 +251,7 @@ int main() {
 
 		// 3. 定义决策变量
 		// 健壮性检查：如有任何关键参数为0，直接报错退出，防止空变量被加入模型
-		if (params.numShips <= 0 || params.numShipK <= 0 || params.numRows <= 0 || params.numSlotsPerRow <= 0 || params.numCrane <= 0) {
+		if (params.numShips <= 0 || params.numShipK <= 0 || params.numRows <= 0 || params.numSlotsPerRow <= 0 ) {
 			std::cerr << "[ERROR] 参数维度为0，无法建立模型。" << std::endl;
 			return 1;
 		}
@@ -263,8 +263,8 @@ int main() {
 		IloArray<IloArray<IloArray<IloBoolVar>>> f(env);
 		// y_st: 船舶s的停靠位置是否在船舶t之前
 		IloArray<IloArray<IloBoolVar>> y(env);
-		// z_skq: 船舶s货舱k由起重机q负责
-		IloArray<IloArray<IloArray<IloBoolVar>>> z(env);
+		// // z_skq: 船舶s货舱k由起重机q负责
+		// IloArray<IloArray<IloArray<IloBoolVar>>> z(env);
 		// q_skt 船舱卸货的顺序变量
 		IloArray<IloArray<IloArray<IloBoolVar>>> q(env);
 		// e_s: 船舶s的卸载开始时间
@@ -276,18 +276,6 @@ int main() {
 
 		// 初始化变量
 		for (int s = 0; s < params.numShips; s++) {
-			// z_skq: 船舶s货舱k由起重机q负责
-			IloArray<IloArray<IloBoolVar>> z_s(env);
-			for (int k = 0; k < params.numShipK; k++) {
-				IloArray<IloBoolVar> z_sk(env);
-				for (int q_ = 0; q_ < params.numCrane; q_++) {
-					std::string z_name = "z_" + std::to_string(s) + "_" + std::to_string(k) + "_" + std::to_string(q_);
-					z_sk.add(IloBoolVar(env, z_name.c_str()));
-				}
-				z_s.add(z_sk);
-			}
-			z.add(z_s);
-
 			// q_skt: 船舱卸货顺序变量
 			IloArray<IloArray<IloBoolVar>> q_s(env);
 			for (int k = 0; k < params.numShipK; k++) {
@@ -321,7 +309,7 @@ int main() {
 			f.add(f_s);
 
 			// e_s: 船舶s的卸载开始时间
-			e.add(IloNumVar(env, params.arrivalTime[s], params.planningHorizon));
+			e.add(IloNumVar(env, params.arrivalTime[s], IloInfinity));
 
 			// e_sk: 船舶s 货舱k的卸货时间
 			IloArray<IloNumVar> e_s(env);
@@ -368,26 +356,62 @@ int main() {
 
 		// 4. 构建目标函数：最小化总转运成本、存储成本和靠泊时间
 		// 若任何参数为0，直接跳过模型构建
-		if (params.numShips == 0 || params.numShipK == 0 || params.numRows == 0 || params.numSlotsPerRow == 0 || params.numCrane == 0) {
+		if (params.numShips == 0 || params.numShipK == 0 || params.numRows == 0 || params.numSlotsPerRow == 0 ) {
 			std::cerr << "[ERROR] 参数维度为0，跳过模型构建。" << std::endl;
 			return 1;
 		}
 		IloExpr objExpr(env);
 		int objTermCount = 0;
-		// 总转运成本（去除IloPower的0.5次幂，直接用距离平方dist2，且跳过requiredSlots为0的项）
+		// 线性化曼哈顿距离目标函数：引入辅助变量 delta_x, delta_y
+		// delta_x >= ship_center - x_rv, delta_x >= -(ship_center - x_rv)
+		// delta_y >= y0 - y_rv, delta_y >= -(y0 - y_rv)
+		std::vector<std::vector<std::vector<std::vector<IloNumVar>>>> delta_x(params.numShips);
+		std::vector<std::vector<std::vector<std::vector<IloNumVar>>>> delta_y(params.numShips);
+		// 线性化 (delta_x + delta_y) * x
+		std::vector<std::vector<std::vector<std::vector<IloNumVar>>>> w(params.numShips);
+		IloExpr transCostExpr(env); // 转运成本
 		for (int s = 0; s < params.numShips; s++) {
-			for(int k =0 ;k < params.numShipK;k++){
+			delta_x[s].resize(params.numShipK);
+			delta_y[s].resize(params.numShipK);
+			w[s].resize(params.numShipK);
+			for (int k = 0; k < params.numShipK; k++) {
+				delta_x[s][k].resize(params.numRows);
+				delta_y[s][k].resize(params.numRows);
+				w[s][k].resize(params.numRows);
 				if(params.requiredSlots[s][k] == 0 || params.unloadingSpeed[s][k] == 0) continue;
 				for (int r = 0; r < params.numRows; r++) {
+					delta_x[s][k][r].resize(params.numSlotsPerRow);
+					delta_y[s][k][r].resize(params.numSlotsPerRow);
+					w[s][k][r].resize(params.numSlotsPerRow);
 					for (int v = 0; v < params.numSlotsPerRow; v++) {
 						// 槽位中心坐标 (x_rv, y_rv)
 						double x_rv = v * params.width + params.width / 2.0;
 						double y_rv = r * params.width + params.width / 2.0;
-						// 船中心坐标 (a_s + l_s/2, y0)
 						IloExpr ship_center = (a_s[s] + params.shipLength[s]) / 2.0;
-						double y0 = 0.0; // 你可以根据实际情况设定
-						// 曼哈顿距离：横向+纵向绝对值
-						objExpr += (IloAbs(ship_center - x_rv) + IloAbs(y0 - y_rv)) * params.cargoWeight[s] / (params.requiredSlots[s][k]*params.numShipK) * x[s][k][r][v];
+						double y0 = 0.0;
+						double slotDiv = 1.0;
+						if (params.requiredSlots[s][k] > 0 && params.numShipK > 0) {
+							slotDiv = 1.0 / (params.requiredSlots[s][k] * params.numShipK);
+						}
+						// 定义辅助变量
+						std::string dx_name = "dx_" + std::to_string(s) + "_" + std::to_string(k) + "_" + std::to_string(r) + "_" + std::to_string(v);
+						std::string dy_name = "dy_" + std::to_string(s) + "_" + std::to_string(k) + "_" + std::to_string(r) + "_" + std::to_string(v);
+						std::string w_name = "w_" + std::to_string(s) + "_" + std::to_string(k) + "_" + std::to_string(r) + "_" + std::to_string(v);
+						delta_x[s][k][r][v] = IloNumVar(env, 0, IloInfinity, dx_name.c_str());
+						delta_y[s][k][r][v] = IloNumVar(env, 0, IloInfinity, dy_name.c_str());
+						w[s][k][r][v] = IloNumVar(env, 0, IloInfinity, w_name.c_str());
+						// 线性化约束 for delta_x, delta_y
+						model.add(delta_x[s][k][r][v] >= ship_center - x_rv - (1 - x[s][k][r][v]) * bigM);
+						model.add(delta_x[s][k][r][v] >= -(ship_center - x_rv) - (1 - x[s][k][r][v]) * bigM);
+						model.add(delta_y[s][k][r][v] >= y0 - y_rv - (1 - x[s][k][r][v]) * bigM);
+						model.add(delta_y[s][k][r][v] >= -(y0 - y_rv) - (1 - x[s][k][r][v]) * bigM);
+						// 线性化 w = (delta_x + delta_y) * x
+						model.add(w[s][k][r][v] >= 0);
+						model.add(w[s][k][r][v] <= bigM * x[s][k][r][v]);
+						model.add(w[s][k][r][v] <= (delta_x[s][k][r][v] + delta_y[s][k][r][v]));
+						model.add(w[s][k][r][v] >= (delta_x[s][k][r][v] + delta_y[s][k][r][v]) - bigM * (1 - x[s][k][r][v]));
+						// 目标函数项
+						transCostExpr += w[s][k][r][v] * params.cargoWeight[s] * slotDiv;
 						objTermCount++;
 					}
 				}
@@ -400,15 +424,16 @@ int main() {
 		}
         
         // 总存储成本
-        for (int s = 0; s < params.numShips; s++) {
-            for(int k =0 ; k <params.numShipK;k++){
-                for (int r = 0; r < params.numRows; r++) {
-                    for (int v = 0; v < params.numSlotsPerRow; v++) {
-                        objExpr += params.storageCost[s][k][r] * x[s][k][r][v];
-                    }
-                }
-            }
-        }
+		IloExpr storageCostExpr(env); // 存储成本
+		for (int s = 0; s < params.numShips; s++) {
+			for(int k =0 ; k <params.numShipK;k++){
+				for (int r = 0; r < params.numRows; r++) {
+					for (int v = 0; v < params.numSlotsPerRow; v++) {
+						storageCostExpr += params.storageCost[s][k][r] * x[s][k][r][v];
+					}
+				}
+			}
+		}
 
 
        IloExpr berthTime(env);
@@ -421,74 +446,61 @@ int main() {
 				// 仅累加分配泊位的卸载时间
 				double speed = params.unloadingSpeed[s][k];
 				if (speed <= 0) continue; // 跳过非法速度
-				singleBerth += (params.cargoWeight[s] / (speed * params.numShipK));
+						double speedDiv = 1.0;
+						if (speed > 0 && params.numShipK > 0) {
+						    speedDiv = 1.0 / (speed * params.numShipK);
+						}
+						singleBerth += params.cargoWeight[s] * speedDiv;
                 
             }
             berthTime += singleBerth;
             singleBerth.end();
         }
         // 应用权重
-        objExpr = params.alpha * objExpr + params.beta * berthTime; // 注意：目标函数公式需根据文档调整权重应用方式
+		// 目标函数三部分清晰组合
+		objExpr = params.alpha * transCostExpr + params.gamma * storageCostExpr + params.beta * berthTime;
         
-        model.add(IloMinimize(env, objExpr));
-        berthTime.end();
-        objExpr.end();
+		model.add(IloMinimize(env, objExpr));
 		// 5. 添加约束条件
         
 		// 约束: 船泊停靠的起始位置大于y0，且终止位置小于码头总长度
 		double y0 = 0.0; // 泊位起点
-		double berthEnd = params.Long; // 码头总长度
+		double berthEnd = params.Length; // 码头总长度
+		std::cout << "[DEBUG] 码头总长度 berthEnd = " << berthEnd << std::endl;
 		for (int s = 0; s < params.numShips; s++) {
 			// 起始位置大于y0
 			model.add(a_s[s] >= y0);
-			// 终止位置小于码头总长度
+			// model.add(a_s[s]  <= berthEnd);
+			// // 终止位置不超过岸线
 			model.add(a_s[s] + params.shipLength[s] <= berthEnd);
 		}
 
-        
-        // 约束: 船舶间停靠需要保持安全距离，防止重叠
-		double M = 1e6; // 足够大的常数
+		// 空间+时间防重叠Big-M约束：只有在时间上有交集的船，才要求空间不重叠
+		// y[s][t] == 1 表示s在t左侧，否则t在s左侧
+		double bigM = 1e6;
 		for (int s = 0; s < params.numShips; s++) {
 			for (int t = 0; t < params.numShips; t++) {
 				if (s == t) continue;
-				// y[s][t] == 1 表示s在t左侧
-				model.add(a_s[s] + params.shipLength[s] + params.safe_distance <= a_s[t] + M * (1 - y[s][t]));
-				model.add(a_s[t] + params.shipLength[t] + params.safe_distance <= a_s[s] + M * y[s][t]);
-			}
-		}
-
-        //约束：每艘船的每个货舱只能使用一个起重机
-		for (int s = 0; s < params.numShips; s++) {
-			for (int k = 0; k < params.numShipK; k++) {
-				IloExpr con(env);
-				for (int q = 0; q < params.numCrane; q++) {
-					con += z[s][k][q];
-				}
-				model.add(con == 1);
-				con.end();
-			}
-		}
-
-		//约束：一个起重机在同一时刻，只能服务于一艘船的一个船舱
-		// 时间冲突Big-M约束：同一时刻同一台起重机不能服务于不同船舱
-		double Mbig = 1e6;
-		for (int q = 0; q < params.numCrane; q++) {
-			for (int s = 0; s < params.numShips; s++) {
+				// 船s的作业区间：[e[s], e[s]+作业时长]，同理t
+				// 只有在时间上有重叠，才需要空间不重叠
+				// 定义：作业时长 duration_s, duration_t
+				double duration_s = 0.0;
+				double duration_t = 0.0;
 				for (int k = 0; k < params.numShipK; k++) {
-					for (int t = 0; t < params.numShips; t++) {
-						for (int m = 0; m < params.numShipK; m++) {
-							if (s == t && k == m) continue;
-							// 作业时长 = params.cargoWeight[s] / (params.unloadingSpeed[s][k] * params.numShipK)
-							double duration_sk = params.cargoWeight[s] / (params.unloadingSpeed[s][k] * params.numShipK);
-							// 非线性乘积z[s][k][q]*z[t][m][q]，Cplex不支持，需线性化。先注释掉防止模型报错。
-							// model.add(e_sk[s][k] + duration_sk <= e_sk[t][m] + Mbig * (1 - z[s][k][q] * z[t][m][q]));
-						}
+					if (params.unloadingSpeed[s][k] > 0) {
+						duration_s += params.cargoWeight[s] / (params.unloadingSpeed[s][k] * params.numShipK);
+					}
+					if (params.unloadingSpeed[t][k] > 0) {
+						duration_t += params.cargoWeight[t] / (params.unloadingSpeed[t][k] * params.numShipK);
 					}
 				}
+				// 用Big-M线性化：
+				model.add(a_s[s] + params.shipLength[s] + params.safe_distance <= a_s[t] + bigM * (1 - y[s][t]) + bigM * (e[s] + duration_s <= e[t]));
+				model.add(a_s[t] + params.shipLength[t] + params.safe_distance <= a_s[s] + bigM * y[s][t] + bigM * (e[t] + duration_t <= e[s]));
 			}
 		}
 
-		//约束同一艘船内任意两个不同货舱的卸货顺序互斥：q[s][k][t] + q[s][t][k] == 1
+		// // //约束同一艘船内任意两个不同货舱的卸货顺序互斥：q[s][k][t] + q[s][t][k] == 1
 		for (int s = 0; s < params.numShips; s++) {
 			for (int k = 0; k < params.numShipK; k++) {
 				for (int t = 0; t < params.numShipK; t++) {
@@ -498,7 +510,7 @@ int main() {
 			}
 		}
 
-		//约束：前一个货舱作业完成之后，后一个货舱才能开始作业
+		// // //约束：前一个货舱作业完成之后，后一个货舱才能开始作业
 		for (int s = 0; s < params.numShips; s++) {
 			for (int k = 0; k < params.numShipK; k++) {
 				for (int t = 0; t < params.numShipK; t++) {
@@ -515,7 +527,7 @@ int main() {
 			}
 		}
 		
-		// 约束(3.11): 每艘船的每个舱占用足够的槽数
+		// // // 约束(3.11): 每艘船的每个舱占用足够的槽数
 		for (int s = 0; s < params.numShips; s++) {
 			for(int k = 0 ; k< params.numShipK;k++){
 				if(params.requiredSlots[s][k] == 0) continue;
@@ -530,8 +542,8 @@ int main() {
 			}
 		}
 
-        // 约束(3.12): 每个槽最多放一种货物（跨船舶 s 和货舱 k，总和 <= 1）
-        // 之前的实现仅对每个 k 单独约束，允许相同槽被不同 k 的货物占用，造成重复占用的问题。
+        // // // 约束(3.12): 每个槽最多放一种货物（跨船舶 s 和货舱 k，总和 <= 1）
+        // // // 之前的实现仅对每个 k 单独约束，允许相同槽被不同 k 的货物占用，造成重复占用的问题。
         for (int r = 0; r < params.numRows; r++) {
             for (int v = 0; v < params.numSlotsPerRow; v++) {
                 IloExpr con(env);
@@ -545,7 +557,7 @@ int main() {
             }
         }
         
-        // 约束(3.13): 每艘船的货物存储在同一行
+        // // // 约束(3.13): 每艘船的货物存储在同一行
         for (int s = 0; s < params.numShips; s++) {
             for(int k = 0 ; k < params.numShipK;k++){
                 IloExpr con(env);
@@ -557,7 +569,7 @@ int main() {
             }
         }
         
-        // 约束(3.14): x_srv与f_sr的关联
+        // // // 约束(3.14): x_srv与f_sr的关联
 		for (int s = 0; s < params.numShips; s++) {
 			for(int k =0 ; k <params.numShipK;k++){
 				for (int r = 0; r < params.numRows; r++) {
@@ -572,7 +584,7 @@ int main() {
 			}
 		}
         
-        // 约束(12)-(14): 存储槽的连续性（简化实现，完整逻辑需按文档详细处理）
+        // // // 约束(12)-(14): 存储槽的连续性（简化实现，完整逻辑需按文档详细处理）
         for (int s = 0; s < params.numShips; s++) {
             for(int k =0; k< params.numShipK;k++){
                 for (int r = 0; r < params.numRows; r++) {
@@ -594,7 +606,7 @@ int main() {
             }
         }
         
-        //约束船舱卸货顺序
+        // // //约束船舱卸货顺序
         for(int s = 0; s< params.numShips;s++){
             for(int k = 0 ; k< params.numShipK;k++){
                 // IloExpr con(env);
@@ -606,22 +618,204 @@ int main() {
         cout <<"导出模型"<<endl;
         // cout <<"导出模型"<<endl;
         // cplex.setOut(env.getNullStream()); // 关闭输出
-        cplex.setParam(IloCplex::TiLim, 3600); // 设置时间限制为1小时
+        cplex.setParam(IloCplex::TiLim,1800); // 设置时间限制为1小时
 		 // 计时：使用 CPLEX 的计时（与当前 ClockType 一致：CPU/WallClock/Deterministic）
         double t0 = cplex.getCplexTime();
         bool solved = cplex.solve();
         double solveSeconds = cplex.getCplexTime() - t0;
-        if(solved){
-			std::cout << "求解状态: " << cplex.getStatus() << std::endl;
-			std::cout << "目标值: " << cplex.getObjValue() << std::endl;
-			std::cout << "求解时间 (秒): " << solveSeconds << std::endl;
-			// 输出部分决策变量结果作为示例
-			for (int s = 0; s < params.numShips; s++) { // 仅输出前两艘船
-				std::cout << "船舶 " << s << " 的卸载开始时间: " << cplex.getValue(e[s]) << std::endl;
-				std::cout << "船舶 " << s << " 的停靠起始位置: " << cplex.getValue(a_s[s]) << std::endl;
-			}
+		if(solved){
+		   std::cout << "求解状态: " << cplex.getStatus() << std::endl;
+		   std::cout << "目标值: " << cplex.getObjValue() << std::endl;
+		   std::cout << "求解时间 (秒): " << solveSeconds << std::endl;
+
+		   // 1. 每个货舱的开始时间
+		   for (int s = 0; s < params.numShips; s++) {
+				bool used = false;
+				for (int k = 0; k < params.numShipK; k++) {
+					if (params.requiredSlots[s][k] > 0 && params.unloadingSpeed[s][k] > 0) used = true;
+				}
+				if (!used) continue;
+				try {
+					std::cout << "船 " << s << " 停靠起始位置: " << cplex.getValue(a_s[s]) ;
+				} catch (IloException& ex) {
+					std::cout <<ex.getMessage() << std::endl;
+				}
+				double wait = 0.0;
+				try {
+					wait = cplex.getValue(e[s]) - params.arrivalTime[s];
+					if (wait < 0) wait = 0;
+					std::cout << " 等待时间: " << wait << std::endl;
+				} catch (IloException& ex) {
+					std::cout <<ex.getMessage() << std::endl;
+				}
+			   for (int k = 0; k < params.numShipK; k++) {
+				   if (params.requiredSlots[s][k] == 0 || params.unloadingSpeed[s][k] == 0) continue;
+				   try {
+					   std::cout << "船 " << s << " 货舱 " << k << ": 开始时间 = " << cplex.getValue(e_sk[s][k]);
+				   } catch (IloException& ex) {
+					   std::cout <<ex.getMessage();
+				   }
+			
+
+				   // 输出结束时间
+				   double duration = 0.0;
+				   if (params.unloadingSpeed[s][k] > 0)
+					   duration = params.cargoWeight[s] / (params.unloadingSpeed[s][k] * params.numShipK);
+				   double end_time = 0.0;
+				   try {
+					   end_time = cplex.getValue(e_sk[s][k]) + duration;
+					   std::cout << ", 结束时间 = " << end_time;
+				   } catch (IloException& ex) {
+					   std::cout << ex.getMessage();
+				   }
+				   std::cout << std::endl;
+
+			   }
+			   
+		   }
+		   for (int s = 0; s < params.numShips; ++s) {
+				double ship_center = 0.0;
+				try {
+					ship_center = (cplex.getValue(a_s[s]) + params.shipLength[s]) / 2.0;
+				} catch (IloException& ex) {
+					// ship_center无法提取
+					continue;
+				}
+                for (int k = 0; k < params.numShipK; ++k) {
+                    int assignedRow = -1;
+                    for (int r = 0; r < params.numRows; ++r) {
+                        if (cplex.getValue(f[s][k][r]) > 0.5) {
+                            assignedRow = r;
+                            break;
+                        }
+                    }
+                    if (assignedRow == -1) continue; // 未分配行
+
+                    std::vector<int> occ;
+                    for (int v = 0; v < params.numSlotsPerRow; ++v) {
+                        if (cplex.getValue(x[s][k][assignedRow][v]) > 0.5) occ.push_back(v);
+                    }
+                    if (occ.empty()) continue;
+
+                    // 合并连续区间
+                    std::vector<std::pair<int,int>> intervals;
+                    int start = occ[0], prev = occ[0];
+                    for (size_t idx = 1; idx < occ.size(); ++idx) {
+                        int cur = occ[idx];
+                        if (cur == prev + 1) {
+                            prev = cur;
+                        } else {
+                            intervals.emplace_back(start, prev);
+                            start = cur; prev = cur;
+                        }
+                    }
+                    intervals.emplace_back(start, prev);
+
+                    // 打印结果
+                    env.out() << "船舶 " << s << " 货舱 " << k << " 行 " << assignedRow << ": ";
+                    for (size_t ii = 0; ii < intervals.size(); ++ii) {
+                        auto pr = intervals[ii];
+                        if (pr.first == pr.second) env.out() << "[" << pr.first << "]";
+                        else env.out() << "[" << pr.first << "-" << pr.second << "]";
+                        if (ii + 1 < intervals.size()) env.out() << ", ";
+                    }
+					// 输出每船舱的转运成本
+					double transCost_sk = 0.0;
+					for (int v = 0; v < params.numSlotsPerRow; ++v) {
+						if (cplex.getValue(x[s][k][assignedRow][v]) > 0.5) {
+							double x_rv = v * params.width + params.width / 2.0;
+							double y_rv = assignedRow * params.width + params.width / 2.0;
+							double y0 = 0.0;
+							double slotDiv = 1.0;
+							if (params.requiredSlots[s][k] > 0 && params.numShipK > 0) {
+								slotDiv = 1.0 / (params.requiredSlots[s][k] * params.numShipK);
+							}
+							double dx = fabs(ship_center - x_rv);
+							double dy = fabs(y0 - y_rv);
+							env.out() << "  货舱中心位置: (" << x_rv << ", " << y_rv << ")";
+							transCost_sk += (dx + dy) * params.cargoWeight[s] * slotDiv;
+						}
+					}
+					env.out() << "  船中心位置: " << ship_center ;
+					env.out() << "  转运成本: " << params.alpha * transCost_sk << std::endl;
+                }
+            }
+            
+
+
+		   // 3. 各部分成本分解
+		   double transCost = 0.0, storageCost = 0.0, berthCost = 0.0;
+		   // 转运成本
+		   for (int s = 0; s < params.numShips; s++) {
+			   for (int k = 0; k < params.numShipK; k++) {
+				   if(params.requiredSlots[s][k] == 0 || params.unloadingSpeed[s][k] == 0) continue;
+				   for (int r = 0; r < params.numRows; r++) {
+					   for (int v = 0; v < params.numSlotsPerRow; v++) {
+						   double slotDiv = 1.0;
+						   if (params.requiredSlots[s][k] > 0 && params.numShipK > 0) {
+							   slotDiv = 1.0 / (params.requiredSlots[s][k] * params.numShipK);
+						   }
+						   // 只对参数有效的变量调用 getValue，彻底避免异常
+						   try {
+							   double xval = cplex.getValue(x[s][k][r][v]);
+							   if (xval > 0.5) {
+								   double ship_center = 0.0;
+								   try {
+									   ship_center = (cplex.getValue(a_s[s]) + params.shipLength[s]) / 2.0;
+								   } catch (IloException& ex) {
+									   // ship_center无法提取
+									   continue;
+								   }
+								   double x_rv = v * params.width + params.width / 2.0;
+								   double y_rv = r * params.width + params.width / 2.0;
+								   double y0 = 0.0;
+								   double dx = fabs(ship_center - x_rv);
+								   double dy = fabs(y0 - y_rv);
+								   transCost += (dx + dy) * params.cargoWeight[s] * slotDiv;
+							   }
+						   } catch (IloException& ex) {
+							   // x未提取，跳过
+							   continue;
+						   }
+					   }
+				   }
+			   }
+		   }
+		   // 存储成本
+		   for (int s = 0; s < params.numShips; s++) {
+			   for (int k = 0; k < params.numShipK; k++) {
+				   for (int r = 0; r < params.numRows; r++) {
+					   for (int v = 0; v < params.numSlotsPerRow; v++) {
+						   double xval = cplex.getValue(x[s][k][r][v]);
+						   if (xval > 0.5) {
+							   storageCost += params.storageCost[s][k][r];
+						   }
+					   }
+				   }
+			   }
+		   }
+		   // 靠泊时间成本
+		   for (int s = 0; s < params.numShips; s++) {
+			   double singleBerth = cplex.getValue(e[s]) - params.arrivalTime[s];
+			   for (int k = 0; k < params.numShipK; k++) {
+				   double speed = params.unloadingSpeed[s][k];
+				   if (speed <= 0) continue;
+				   double speedDiv = 1.0;
+				   if (speed > 0 && params.numShipK > 0) {
+					   speedDiv = 1.0 / (speed * params.numShipK);
+				   }
+				   singleBerth += params.cargoWeight[s] * speedDiv;
+			   }
+			   berthCost += singleBerth;
+		   }
+		   std::cout << "转运成本: " << params.alpha * transCost << std::endl;
+		   std::cout << "存储成本: " << params.gamma * storageCost << std::endl;
+		   std::cout << "靠泊时间成本: " << params.beta * berthCost << std::endl;
+		   // 释放表达式资源（模型求解和输出后再释放）
+		   berthTime.end();
+		   objExpr.end();
 		} else {
-			std::cout << "未找到可行解，状态: " << cplex.getStatus() << std::endl;
+		   std::cout << "未找到可行解，状态: " << cplex.getStatus() << std::endl;
 		}
 
 

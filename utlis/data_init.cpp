@@ -47,22 +47,22 @@ static std::string dirname_of(const std::string& path) {
 
 
 // 读取模型参数
-ModelParams setParams(int numCrane,int numShips) {
+ModelParams setParams(int numShips) {
     ModelParams params;
-    params.numCrane = numCrane;
     params.numRows = 20;
     params.numSlotsPerRow = 24;
     params.numShips = numShips;
     params.planningHorizon = 168; // 一周（小时）
     params.numShipK=3;
-    params.Long = 1000.0; //岸线长度.
+    params.Length = 500.0; //岸线长度.
     params.y0 = 0; //岸线起点
     params.safe_distance = 20;
     
     params.width = 50.0;
     params.relativeHeight = 0.5;
     params.alpha = 1.0;
-    params.beta = 20000.0;
+    params.beta = 200000.0;
+    params.gamma = 2000.0;
 
     std::random_device rd;  // 用于获取种子
     std::mt19937 gen(rd()); // 随机数生成器
@@ -183,9 +183,8 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
     {
         std::ofstream ofs(baseName + "_general.csv");
         ofs << "key,value\n";
-        ofs << "Length," << params.Long << "\n";
+        ofs << "Length," << params.Length << "\n";
         ofs << "safe_distance," << params.safe_distance << "\n";
-        ofs << "numCrane,"<<params.numCrane<<"\n";
         ofs << "numRows," << params.numRows << "\n";
         ofs << "numSlotsPerRow," << params.numSlotsPerRow << "\n";
         ofs << "numShips," << params.numShips << "\n";
@@ -195,6 +194,7 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
         ofs << "relativeHeight," << params.relativeHeight << "\n";
         ofs << "alpha," << params.alpha << "\n";
         ofs << "beta," << params.beta << "\n";
+        ofs << "gamma," << params.gamma << "\n";
         ofs.close();
     }
 
@@ -294,8 +294,7 @@ void writeParamsToCSV(const ModelParams& params, const std::string& baseName) {
 
 // 当作独立可执行使用的入口（合并原 data_init_runner 功能）
 int main(int argc, char** argv) {
-    int numCrane = 3;
-    int numShips = 3;
+    int numShips = 2;
     // if (argc >= 3) {
     //     try {
     //         numCrane = std::stoi(argv[1]);
@@ -305,11 +304,11 @@ int main(int argc, char** argv) {
     //     }
     // }
 
-    std::cout << "Running data_init (merged) with numCrane=" << numCrane << " numShips=" << numShips << std::endl;
-    ModelParams params = setParams(numCrane, numShips);
+    // std::cout << "Running data_init (merged) with numCrane=" << numCrane << " numShips=" << numShips << std::endl;
+    ModelParams params = setParams( numShips);
 
     // Ensure output directory exists: caller created cpp/data earlier; just write into it.
-    writeParamsToCSV(params, "../data/example_1/params_output");
+    writeParamsToCSV(params, "../data/example_3/params_output");
     // writeParamsCombinedCSV(params, "data/example_2/params_output_combined");
 
     std::cout << "Data export completed to cpp/data/*.csv" << std::endl;

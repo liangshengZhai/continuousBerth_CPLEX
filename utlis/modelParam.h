@@ -8,12 +8,11 @@
 using namespace std;
 // 模型参数结构体
 struct ModelParams {
-    int numCrane;           // 起重机数量
     int numRows;           // 存储行数量
     int numSlotsPerRow;    // 每行槽数量
     int numShips;          // 船舶数量
     double planningHorizon; // 计划 horizon
-    double Long;          //岸线长度
+    double Length;          //岸线长度
     int y0;              //岸线起点
     //船的船舱个数
     int numShipK;
@@ -37,8 +36,10 @@ struct ModelParams {
     double relativeHeight;             // 相对高度 c
     
     // 权重系数
-    double alpha;                      // 成本权重
+    double alpha;                      // 转运成本权重
     double beta;                       // 靠泊时间权重
+    double gamma;              // 存储成本权重
+
 };
 
 #endif

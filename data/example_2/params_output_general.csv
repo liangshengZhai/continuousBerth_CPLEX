@@ -1,0 +1,13 @@
+key,value
+Length,500
+safe_distance,20
+numRows,20
+numSlotsPerRow,24
+numShips,2
+planningHorizon,168
+numShipK,3
+width,50
+relativeHeight,0.5
+alpha,1
+beta,20000
+gamma,5000

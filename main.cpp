@@ -632,6 +632,11 @@ int main() {
 		   std::cout << "求解状态: " << cplex.getStatus() << std::endl;
 		   std::cout << "目标值: " << cplex.getObjValue() << std::endl;
 		   std::cout << "求解时间 (秒): " << solveSeconds << std::endl;
+		   try {
+			   std::cout << "最终gap值: " << cplex.getMIPRelativeGap() << std::endl;
+		   } catch (IloException& ex) {
+			   std::cout << "gap获取失败: " << ex.getMessage() << std::endl;
+		   }
 
 		   // 1. 每个货舱的开始时间
 		   for (int s = 0; s < params.numShips; s++) {

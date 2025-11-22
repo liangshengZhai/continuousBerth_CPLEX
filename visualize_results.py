@@ -244,7 +244,7 @@ def plot_berth_assignment(outdir, ship_to_color):
     all_ends = [e for _, _, e in berth_rows]
     # 横坐标范围固定为0-1000，每50显示一个刻度
     ax.set_xlim(0, 1000)
-    ax.set_xticks(range(0, 1001, 50))
+    ax.set_xticks(range(0, 1001, 100))
     ax.set_xlabel('Berth position')
     ax.set_title('Berth assignment (起止位置)')
     fig.subplots_adjust(left=0.18, right=0.96, top=0.88, bottom=0.18)

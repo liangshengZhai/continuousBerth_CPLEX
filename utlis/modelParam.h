@@ -39,7 +39,6 @@ struct ModelParams {
     double alpha;                      // 转运成本权重
     double beta;                       // 靠泊时间权重
     double gamma;              // 存储成本权重
-
 };
 
 #endif

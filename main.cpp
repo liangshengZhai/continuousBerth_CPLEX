@@ -456,9 +456,14 @@ int main() {
             berthTime += singleBerth;
             singleBerth.end();
         }
-        // 应用权重
-		// 目标函数三部分清晰组合
-		objExpr = params.alpha * transCostExpr + params.gamma * storageCostExpr + params.beta * berthTime;
+		// 应用权重
+		// 目标函数四部分清晰组合（增加停靠位置惩罚项）
+		IloExpr berthPosPenalty(env);
+		for (int s = 0; s < params.numShips; ++s) {
+			berthPosPenalty += a_s[s];
+		}
+		objExpr = params.alpha * transCostExpr + params.gamma * storageCostExpr + params.beta * berthTime + params.beta * berthPosPenalty;
+		berthPosPenalty.end();
         
 		model.add(IloMinimize(env, objExpr));
 		// 5. 添加约束条件
